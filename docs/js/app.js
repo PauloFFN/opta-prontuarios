@@ -24,7 +24,7 @@
       modalBox.innerHTML = `
         <h3>${title}</h3>
         ${imageHtml}
-        <input type="text" id="modal-input" placeholder="${placeholder || ''}">
+        <input type="text" id="modal-input" placeholder="${placeholder || ''}" autocapitalize="words" autocomplete="off" autocorrect="off">
         <div class="modal-actions">
           <button class="btn-cancel" id="modal-cancel">Cancelar</button>
           <button class="btn-ok" id="modal-ok">OK</button>

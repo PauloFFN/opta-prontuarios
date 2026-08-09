@@ -64,7 +64,7 @@ button, input, select { font-family: inherit; }
 .modal-backdrop.active { display: flex; }
 .modal-box { background: #fff; border-radius: 14px; padding: 20px; width: 100%; max-width: 340px; }
 .modal-box h3 { margin: 0 0 12px; font-size: 16px; }
-.modal-box input[type=text] { width: 100%; padding: 11px 12px; border-radius: 8px; border: 1px solid #d6dbe3; font-size: 15px; margin-bottom: 14px; }
+.modal-box input[type=text] { width: 100%; padding: 14px 12px; border-radius: 8px; border: 1px solid #d6dbe3; font-size: 17px; margin-bottom: 14px; }
 .modal-box .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 .modal-box .modal-actions button { border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
 .modal-box .btn-cancel { background: #eef1f5; }
