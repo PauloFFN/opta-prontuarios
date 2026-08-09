@@ -1,4 +1,5 @@
-AVALIAÇÃO BASE.xlsx
+*.xlsx
 .DS_Store
 Thumbs.db
 /app/
+/.pwtest/

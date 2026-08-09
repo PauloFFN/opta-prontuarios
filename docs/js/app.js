@@ -2,13 +2,25 @@
 (function () {
   'use strict';
 
+  // Pede armazenamento persistente para o navegador não apagar os dados por falta de uso
+  // (relevante no Safari/iOS, que pode limpar dados de site após 7 dias sem visita).
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(() => {});
+  }
+
   // ---------- Navegação entre telas ----------
   function showView(id) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(id).classList.add('active');
   }
   document.querySelectorAll('[data-nav]').forEach(el => {
-    el.addEventListener('click', () => showView(el.dataset.nav));
+    el.addEventListener('click', () => {
+      const target = el.dataset.nav;
+      if (target === 'view-patients' && currentClinic) { openPatients(currentClinic); return; }
+      if (target === 'view-patient' && currentPatient) { openPatient(currentPatient); return; }
+      showView(target);
+      if (target === 'view-home') refreshHome();
+    });
   });
 
   // ---------- Modal genérico (prompt de texto) ----------
@@ -36,7 +48,6 @@
   }
 
   function listModal(title, items, renderLabel) {
-    // items: array; retorna o item escolhido ou null
     return new Promise((resolve) => {
       const rows = items.map((it, idx) =>
         `<div class="list-item" data-idx="${idx}"><span class="item-title">${renderLabel(it)}</span></div>`
@@ -52,16 +63,27 @@
   }
 
   // ---------- Estado ----------
-  let currentClinic = null;      // {id, name}
-  let currentDraft = null;       // {id, clinicId, clinicName, patientName, strokes, createdAt, updatedAt}
-  let drawer1, drawer2;          // PageDrawer da tela de prontuário
-  let presetDrawer1, presetDrawer2; // PageDrawer da tela de edição de rabisco
+  let currentClinic = null;
+  let currentPatient = null;
+  let currentVisit = null;
+  let drawer1, drawer2;
+  let presetDrawer1, presetDrawer2;
   let editingPresetId = null;
   let lastActiveMainDrawer = null;
   let lastActivePresetDrawer = null;
   let saveTimer = null;
+  let pendingImportFiles = [];
 
-  const drawersByPage = {}; // preenchido depois de instanciar
+  const drawersByPage = {};
+
+  function formatDate(ts) {
+    return new Date(ts).toLocaleDateString('pt-BR');
+  }
+  function dateInputValue(ts) {
+    const d = new Date(ts);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
 
   // ================= HOME =================
   async function refreshHome() {
@@ -73,11 +95,11 @@
       li.className = 'list-item';
       li.innerHTML = `<span class="item-title">${escapeHtml(c.name)}</span>
         <span class="item-actions"><button data-action="del">🗑</button></span>`;
-      li.querySelector('.item-title').onclick = () => openNewRecord(c);
+      li.querySelector('.item-title').onclick = () => openPatients(c);
       li.querySelector('[data-action="del"]').onclick = async (e) => {
         e.stopPropagation();
-        if (confirm(`Remover a clínica "${c.name}"? Os prontuários já exportados não são afetados.`)) {
-          await Store.remove('clinics', c.id);
+        if (confirm(`Remover a clínica "${c.name}"? Isso apaga também os pacientes e o histórico salvos dentro do app para essa clínica (os PDFs já exportados nas suas pastas não são afetados).`)) {
+          await cascadeDeleteClinic(c.id);
           refreshHome();
         }
       };
@@ -90,28 +112,35 @@
       clinicListEl.appendChild(li);
     }
 
-    const drafts = await Store.all('drafts');
+    const visits = await Store.all('visits');
+    const drafts = visits.filter(v => v.status === 'draft');
     const draftListEl = document.getElementById('draft-list');
     const draftEmptyEl = document.getElementById('draft-empty');
     draftListEl.innerHTML = '';
     drafts.sort((a, b) => b.updatedAt - a.updatedAt);
     draftEmptyEl.style.display = drafts.length ? 'none' : 'block';
-    drafts.forEach(d => {
+    drafts.forEach(v => {
       const li = document.createElement('li');
       li.className = 'list-item';
-      const dt = new Date(d.updatedAt);
       li.innerHTML = `<div>
-          <div class="item-title">${escapeHtml(d.clinicName)}${d.patientName ? ' — ' + escapeHtml(d.patientName) : ''}</div>
-          <div class="item-sub">${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+          <div class="item-title">${escapeHtml(v.patientName)} — ${escapeHtml(v.clinicName)}</div>
+          <div class="item-sub">${formatDate(v.updatedAt)}</div>
         </div>
         <span class="item-actions"><button data-action="del">🗑</button></span>`;
-      li.querySelector('.item-title').onclick = () => resumeDraft(d);
+      li.querySelector('.item-title').onclick = () => resumeVisit(v);
       li.querySelector('[data-action="del"]').onclick = async (e) => {
         e.stopPropagation();
-        if (confirm('Apagar este rascunho?')) { await Store.remove('drafts', d.id); refreshHome(); }
+        if (confirm('Apagar este atendimento em aberto?')) { await Store.remove('visits', v.id); refreshHome(); }
       };
       draftListEl.appendChild(li);
     });
+  }
+
+  async function cascadeDeleteClinic(clinicId) {
+    const [patients, visits] = await Promise.all([Store.all('patients'), Store.all('visits')]);
+    await Promise.all(patients.filter(p => p.clinicId === clinicId).map(p => Store.remove('patients', p.id)));
+    await Promise.all(visits.filter(v => v.clinicId === clinicId).map(v => Store.remove('visits', v.id)));
+    await Store.remove('clinics', clinicId);
   }
 
   document.getElementById('btn-add-clinic').addEventListener('click', async () => {
@@ -121,12 +150,191 @@
     refreshHome();
   });
 
-  // ================= NOVO PRONTUÁRIO =================
-  async function openNewRecord(clinic) {
-    currentClinic = clinic;
-    document.getElementById('new-clinic-name').textContent = clinic.name;
-    document.getElementById('new-patient').value = '';
+  // ---- Busca global de pacientes ----
+  const globalSearchInput = document.getElementById('global-search');
+  globalSearchInput.addEventListener('input', async () => {
+    const q = normalizeSearch(globalSearchInput.value.trim());
+    const resultsEl = document.getElementById('global-search-results');
+    const defaultSections = document.getElementById('home-default-sections');
+    if (!q) {
+      resultsEl.innerHTML = '';
+      defaultSections.style.display = '';
+      return;
+    }
+    defaultSections.style.display = 'none';
+    const patients = await Store.all('patients');
+    const matches = patients.filter(p => normalizeSearch(p.name).includes(q)).slice(0, 30);
+    resultsEl.innerHTML = '';
+    if (!matches.length) {
+      resultsEl.innerHTML = '<li class="empty-hint">Nenhum paciente encontrado.</li>';
+      return;
+    }
+    matches.forEach(p => {
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      li.innerHTML = `<div>
+          <div class="item-title">${escapeHtml(p.name)}</div>
+          <div class="item-sub">${escapeHtml(p.clinicName)}</div>
+        </div>`;
+      li.onclick = async () => {
+        const clinic = await Store.get('clinics', p.clinicId);
+        currentClinic = clinic || { id: p.clinicId, name: p.clinicName };
+        globalSearchInput.value = '';
+        resultsEl.innerHTML = '';
+        defaultSections.style.display = '';
+        openPatient(p);
+      };
+      resultsEl.appendChild(li);
+    });
+  });
 
+  // ================= PACIENTES DE UMA CLÍNICA =================
+  async function openPatients(clinic) {
+    currentClinic = clinic;
+    document.getElementById('patients-clinic-title').textContent = clinic.name;
+    document.getElementById('patients-search').value = '';
+    await renderPatientsList('');
+    showView('view-patients');
+  }
+
+  async function renderPatientsList(query) {
+    const [patients, visits] = await Promise.all([Store.all('patients'), Store.all('visits')]);
+    const clinicPatients = patients.filter(p => p.clinicId === currentClinic.id);
+    const q = normalizeSearch(query || '');
+    const filtered = q ? clinicPatients.filter(p => normalizeSearch(p.name).includes(q)) : clinicPatients;
+    filtered.sort((a, b) => a.name.localeCompare(b.name));
+
+    const listEl = document.getElementById('patients-list');
+    const emptyEl = document.getElementById('patients-empty');
+    listEl.innerHTML = '';
+    emptyEl.style.display = filtered.length ? 'none' : 'block';
+    emptyEl.textContent = clinicPatients.length ? 'Nenhum paciente encontrado com esse nome.' : 'Nenhum paciente cadastrado ainda.';
+
+    filtered.forEach(p => {
+      const patientVisits = visits.filter(v => v.patientId === p.id);
+      const lastVisit = patientVisits.sort((a, b) => b.visitDate - a.visitDate)[0];
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      li.innerHTML = `<div>
+          <div class="item-title">${escapeHtml(p.name)}</div>
+          <div class="item-sub">${lastVisit ? 'Último atendimento: ' + formatDate(lastVisit.visitDate) : 'Sem atendimentos'}</div>
+        </div>
+        <span class="item-actions"><button data-action="del">🗑</button></span>`;
+      li.addEventListener('click', (e) => {
+        if (e.target.closest('[data-action="del"]')) return;
+        openPatient(p);
+      });
+      li.querySelector('[data-action="del"]').onclick = async (e) => {
+        e.stopPropagation();
+        if (confirm(`Remover "${p.name}" e todo o histórico salvo no app? Os PDFs já exportados nas suas pastas não são afetados.`)) {
+          await Promise.all(patientVisits.map(v => Store.remove('visits', v.id)));
+          await Store.remove('patients', p.id);
+          renderPatientsList(document.getElementById('patients-search').value);
+        }
+      };
+      listEl.appendChild(li);
+    });
+  }
+
+  document.getElementById('patients-search').addEventListener('input', (e) => renderPatientsList(e.target.value));
+
+  document.getElementById('btn-add-patient').addEventListener('click', async () => {
+    const name = await promptModal('Novo paciente', 'Nome completo');
+    if (!name) return;
+    const patient = { id: uid(), clinicId: currentClinic.id, clinicName: currentClinic.name, name, createdAt: Date.now() };
+    await Store.put('patients', patient);
+    openPatient(patient);
+  });
+
+  document.getElementById('btn-import-pdfs').addEventListener('click', () => {
+    pendingImportFiles = [];
+    document.getElementById('import-file-input').value = '';
+    document.getElementById('import-rows').innerHTML = '';
+    document.getElementById('btn-do-import').style.display = 'none';
+    showView('view-import');
+  });
+
+  // ================= HISTÓRICO DO PACIENTE =================
+  async function openPatient(patient) {
+    currentPatient = patient;
+    if (!currentClinic || currentClinic.id !== patient.clinicId) {
+      currentClinic = (await Store.get('clinics', patient.clinicId)) || { id: patient.clinicId, name: patient.clinicName };
+    }
+    document.getElementById('patient-title').textContent = patient.name;
+    await renderVisitList();
+    showView('view-patient');
+  }
+
+  async function renderVisitList() {
+    const visits = (await Store.all('visits')).filter(v => v.patientId === currentPatient.id);
+    visits.sort((a, b) => b.visitDate - a.visitDate);
+    const listEl = document.getElementById('visit-list');
+    const emptyEl = document.getElementById('visit-empty');
+    listEl.innerHTML = '';
+    emptyEl.style.display = visits.length ? 'none' : 'block';
+
+    visits.forEach(v => {
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      const badge = v.status === 'draft'
+        ? '<span class="status-badge draft">Rascunho</span>'
+        : '<span class="status-badge done">Concluído' + (v.source === 'imported' ? ' · importado' : '') + '</span>';
+      li.innerHTML = `<div>
+          <div class="item-title">${formatDate(v.visitDate)}</div>
+          <div class="item-sub">${badge}</div>
+        </div>
+        <span class="item-actions" id="visit-actions-${v.id}"></span>`;
+      const actionsEl = li.querySelector(`#visit-actions-${v.id}`);
+      if (v.status === 'draft') {
+        const btn = document.createElement('button');
+        btn.textContent = 'Continuar';
+        btn.onclick = (e) => { e.stopPropagation(); resumeVisit(v); };
+        actionsEl.appendChild(btn);
+      } else {
+        const shareBtn = document.createElement('button');
+        shareBtn.textContent = 'Compartilhar';
+        shareBtn.onclick = async (e) => {
+          e.stopPropagation();
+          const filename = sanitizeFilename(`${v.clinicName}_${v.patientName}_${dateInputValue(v.visitDate)}`) + '.pdf';
+          await exportAndSharePDF(v.pdfBlob, filename);
+        };
+        actionsEl.appendChild(shareBtn);
+      }
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '🗑';
+      delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        if (confirm('Apagar este atendimento do histórico do app? O PDF já salvo na pasta da clínica não é afetado.')) {
+          await Store.remove('visits', v.id);
+          renderVisitList();
+        }
+      };
+      actionsEl.appendChild(delBtn);
+      listEl.appendChild(li);
+    });
+  }
+
+  document.getElementById('btn-new-visit').addEventListener('click', async () => {
+    currentVisit = {
+      id: uid(),
+      patientId: currentPatient.id,
+      clinicId: currentClinic.id,
+      clinicName: currentClinic.name,
+      patientName: currentPatient.name,
+      status: 'draft',
+      strokes: { 1: [], 2: [] },
+      pdfBlob: null,
+      source: 'app',
+      visitDate: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    await openPresetPicker();
+  });
+
+  // ================= ESCOLHER RABISCOS / INICIAR =================
+  async function openPresetPicker() {
+    document.getElementById('new-patient-name').textContent = currentVisit.patientName;
     const presets = await Store.all('presets');
     const pickerList = document.getElementById('preset-picker-list');
     const pickerEmpty = document.getElementById('preset-picker-empty');
@@ -150,23 +358,11 @@
   }
 
   document.getElementById('btn-start-record').addEventListener('click', async () => {
-    const patientName = document.getElementById('new-patient').value.trim();
     const pickerList = document.getElementById('preset-picker-list');
     const checkedIds = Array.from(pickerList.querySelectorAll('input:checked')).map(i => i.dataset.id);
     const presets = pickerList._presets || [];
     const chosenPresets = presets.filter(p => checkedIds.includes(p.id));
-
-    currentDraft = {
-      id: uid(),
-      clinicId: currentClinic.id,
-      clinicName: currentClinic.name,
-      patientName,
-      strokes: { 1: [], 2: [] },
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-
-    openCanvasForDraft(currentDraft, chosenPresets);
+    openCanvasForVisit(currentVisit, chosenPresets);
   });
 
   // ================= TELA CANVAS (prontuário) =================
@@ -217,7 +413,7 @@
   });
 
   document.getElementById('btn-canvas-menu').addEventListener('click', () => {
-    if (confirm('Limpar todos os traços deste prontuário? Essa ação não pode ser desfeita.')) {
+    if (confirm('Limpar todos os traços deste atendimento? Essa ação não pode ser desfeita.')) {
       drawer1.loadStrokes([]);
       drawer2.loadStrokes([]);
       scheduleAutosave();
@@ -225,24 +421,25 @@
   });
 
   function scheduleAutosave() {
-    if (!currentDraft) return;
+    if (!currentVisit) return;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(persistCurrentDraft, 600);
+    saveTimer = setTimeout(persistCurrentVisitDraft, 600);
   }
 
-  async function persistCurrentDraft() {
-    if (!currentDraft) return;
-    currentDraft.strokes = { 1: drawer1.getStrokes(), 2: drawer2.getStrokes() };
-    currentDraft.updatedAt = Date.now();
-    await Store.put('drafts', currentDraft);
+  async function persistCurrentVisitDraft() {
+    if (!currentVisit) return;
+    currentVisit.strokes = { 1: drawer1.getStrokes(), 2: drawer2.getStrokes() };
+    currentVisit.status = 'draft';
+    currentVisit.updatedAt = Date.now();
+    await Store.put('visits', currentVisit);
   }
 
-  function openCanvasForDraft(draft, initialPresets) {
+  function openCanvasForVisit(visit, initialPresets) {
     if (!drawer1) initMainDrawers();
-    document.getElementById('canvas-title').textContent =
-      draft.clinicName + (draft.patientName ? ' — ' + draft.patientName : '');
-    drawer1.loadStrokes(draft.strokes[1]);
-    drawer2.loadStrokes(draft.strokes[2]);
+    currentVisit = visit;
+    document.getElementById('canvas-title').textContent = `${visit.patientName} — ${formatDate(visit.visitDate)}`;
+    drawer1.loadStrokes(visit.strokes ? visit.strokes[1] : []);
+    drawer2.loadStrokes(visit.strokes ? visit.strokes[2] : []);
     (initialPresets || []).forEach(p => {
       drawer1.addStrokes(p.strokes && p.strokes[1]);
       drawer2.addStrokes(p.strokes && p.strokes[2]);
@@ -251,7 +448,7 @@
     lastActiveMainDrawer = null;
     showView('view-canvas');
     requestAnimationFrame(() => { drawer1.resize(); drawer2.resize(); });
-    persistCurrentDraft();
+    persistCurrentVisitDraft();
     setupPageIndicator();
   }
 
@@ -267,38 +464,37 @@
     stages.forEach(s => io.observe(s));
   }
 
-  async function resumeDraft(draft) {
-    currentDraft = draft;
-    openCanvasForDraft(draft, []);
+  async function resumeVisit(visit) {
+    const patient = await Store.get('patients', visit.patientId);
+    currentPatient = patient || { id: visit.patientId, name: visit.patientName, clinicId: visit.clinicId, clinicName: visit.clinicName };
+    currentClinic = (await Store.get('clinics', visit.clinicId)) || { id: visit.clinicId, name: visit.clinicName };
+    openCanvasForVisit(visit, []);
   }
 
   document.getElementById('btn-save-draft').addEventListener('click', async () => {
     clearTimeout(saveTimer);
-    await persistCurrentDraft();
-    showView('view-home');
-    refreshHome();
+    await persistCurrentVisitDraft();
+    openPatient(currentPatient);
   });
 
   document.getElementById('btn-export-pdf').addEventListener('click', async () => {
     clearTimeout(saveTimer);
-    await persistCurrentDraft();
     const btn = document.getElementById('btn-export-pdf');
     const originalText = btn.textContent;
     btn.textContent = 'Gerando...';
     btn.disabled = true;
     try {
       const bytes = await buildRecordPDF(drawersByPage);
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const filename = sanitizeFilename(`${currentDraft.clinicName}_${currentDraft.patientName || 'paciente'}_${dateStr}`) + '.pdf';
-      const result = await exportAndSharePDF(bytes, filename);
-      if (result !== 'cancelled') {
-        if (confirm('PDF exportado. Apagar o rascunho salvo localmente?')) {
-          await Store.remove('drafts', currentDraft.id);
-          currentDraft = null;
-          showView('view-home');
-          refreshHome();
-        }
-      }
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      currentVisit.strokes = { 1: drawer1.getStrokes(), 2: drawer2.getStrokes() };
+      currentVisit.status = 'done';
+      currentVisit.pdfBlob = blob;
+      currentVisit.updatedAt = Date.now();
+      await Store.put('visits', currentVisit);
+
+      const filename = sanitizeFilename(`${currentVisit.clinicName}_${currentVisit.patientName}_${dateInputValue(currentVisit.visitDate)}`) + '.pdf';
+      await exportAndSharePDF(blob, filename);
+      openPatient(currentPatient);
     } catch (err) {
       console.error(err);
       alert('Não foi possível gerar o PDF. Tente novamente.');
@@ -310,8 +506,96 @@
 
   document.getElementById('btn-canvas-back').addEventListener('click', async () => {
     clearTimeout(saveTimer);
-    await persistCurrentDraft();
-    refreshHome();
+    await persistCurrentVisitDraft();
+    openPatient(currentPatient);
+  });
+
+  // ================= IMPORTAR PDFs ANTIGOS =================
+  function titleCaseName(s) {
+    return s.replace(/\s+/g, ' ').trim().replace(/\p{L}[\p{L}'-]*/gu, w => w.charAt(0).toUpperCase() + w.slice(1));
+  }
+
+  // Reconhece o padrão "AAMMDD nome" usado nos arquivos antigos (ex: 230212 maria ines silva).
+  function parseFilenameConvention(filename, fileLastModified) {
+    const base = filename.replace(/\.pdf$/i, '');
+    const m = base.match(/^(\d{2})(\d{2})(\d{2})[\s_-]+(.+)$/);
+    if (m) {
+      const yy = parseInt(m[1], 10), mm = parseInt(m[2], 10), dd = parseInt(m[3], 10);
+      const year = yy <= 68 ? 2000 + yy : 1900 + yy;
+      let ts = fileLastModified;
+      if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+        ts = new Date(year, mm - 1, dd).getTime();
+      }
+      return { guessedName: titleCaseName(m[4].replace(/[_-]+/g, ' ')), guessedDate: ts };
+    }
+    return { guessedName: titleCaseName(base.replace(/[_-]+/g, ' ')), guessedDate: fileLastModified };
+  }
+
+  document.getElementById('import-file-input').addEventListener('change', (e) => {
+    pendingImportFiles = Array.from(e.target.files || []);
+    const rowsEl = document.getElementById('import-rows');
+    rowsEl.innerHTML = '';
+    pendingImportFiles.forEach((file, idx) => {
+      const guess = parseFilenameConvention(file.name, file.lastModified || Date.now());
+      const row = document.createElement('div');
+      row.className = 'import-row';
+      row.innerHTML = `
+        <div class="import-filename">${escapeHtml(file.name)}</div>
+        <div class="import-fields">
+          <input type="text" class="import-name" data-idx="${idx}" value="${escapeHtml(guess.guessedName)}">
+          <input type="date" class="import-date" data-idx="${idx}" value="${dateInputValue(guess.guessedDate)}">
+        </div>`;
+      rowsEl.appendChild(row);
+    });
+    document.getElementById('btn-do-import').style.display = pendingImportFiles.length ? 'block' : 'none';
+    document.getElementById('btn-do-import').textContent = `Importar ${pendingImportFiles.length} arquivo(s)`;
+  });
+
+  document.getElementById('btn-do-import').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-do-import');
+    btn.disabled = true;
+    btn.textContent = 'Importando...';
+    try {
+      const existingPatients = (await Store.all('patients')).filter(p => p.clinicId === currentClinic.id);
+      let created = 0;
+      for (let idx = 0; idx < pendingImportFiles.length; idx++) {
+        const file = pendingImportFiles[idx];
+        const nameInput = document.querySelector(`.import-name[data-idx="${idx}"]`);
+        const dateInput = document.querySelector(`.import-date[data-idx="${idx}"]`);
+        const name = (nameInput.value || 'Sem nome').trim();
+        const visitDate = dateInput.value ? new Date(dateInput.value + 'T12:00:00').getTime() : Date.now();
+
+        let patient = existingPatients.find(p => normalizeSearch(p.name) === normalizeSearch(name));
+        if (!patient) {
+          patient = { id: uid(), clinicId: currentClinic.id, clinicName: currentClinic.name, name, createdAt: Date.now() };
+          await Store.put('patients', patient);
+          existingPatients.push(patient);
+        }
+
+        await Store.put('visits', {
+          id: uid(),
+          patientId: patient.id,
+          clinicId: currentClinic.id,
+          clinicName: currentClinic.name,
+          patientName: patient.name,
+          status: 'done',
+          strokes: null,
+          pdfBlob: file,
+          source: 'imported',
+          visitDate,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        });
+        created++;
+      }
+      alert(`${created} PDF(s) importado(s) com sucesso.`);
+      openPatients(currentClinic);
+    } catch (err) {
+      console.error(err);
+      alert('Não foi possível importar um ou mais arquivos.');
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   // ================= MEUS RABISCOS (lista) =================

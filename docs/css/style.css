@@ -102,3 +102,22 @@ button, input, select { font-family: inherit; }
 .modal-box .btn-ok { background: #2d6cdf; color: #fff; font-weight: 600; }
 
 .preset-check { width: 20px; height: 20px; flex: 0 0 auto; }
+
+.status-badge {
+  display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px; margin-top: 4px;
+}
+.status-badge.draft { background: #fdf0d5; color: #a6690a; }
+.status-badge.done { background: #dcf3e4; color: #1a8a4a; }
+
+.import-row {
+  background: #fff; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.import-row .import-filename { font-size: 12px; color: #6b7684; margin-bottom: 8px; word-break: break-all; }
+.import-row .import-fields { display: flex; gap: 8px; }
+.import-row .import-fields input[type=text] { flex: 1; min-width: 0; }
+.import-row .import-fields input[type=date] { flex: 0 0 auto; }
+.import-row input { padding: 9px 10px; border-radius: 8px; border: 1px solid #d6dbe3; font-size: 14px; }
+
+#global-search-results:empty { display: none; }

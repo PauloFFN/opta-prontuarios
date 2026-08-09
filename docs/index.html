@@ -21,29 +21,61 @@
   </header>
 
   <div class="content">
-    <div class="section-title">Clínicas</div>
-    <ul id="clinic-list" class="list"></ul>
-    <button id="btn-add-clinic" class="btn-secondary">+ Nova clínica</button>
+    <input id="global-search" class="field-input" placeholder="Buscar paciente por nome..." autocomplete="off">
+    <ul id="global-search-results" class="list" style="margin-top:8px"></ul>
 
-    <div class="section-title" style="margin-top:28px">Rascunhos em aberto</div>
-    <ul id="draft-list" class="list"></ul>
-    <p id="draft-empty" class="empty-hint">Nenhum rascunho salvo.</p>
+    <div id="home-default-sections">
+      <div class="section-title" style="margin-top:22px">Clínicas</div>
+      <ul id="clinic-list" class="list"></ul>
+      <button id="btn-add-clinic" class="btn-secondary">+ Nova clínica</button>
+
+      <div class="section-title" style="margin-top:28px">Atendimentos em aberto</div>
+      <ul id="draft-list" class="list"></ul>
+      <p id="draft-empty" class="empty-hint">Nenhum atendimento em aberto.</p>
+    </div>
   </div>
 </section>
 
-<!-- ===================== TELA: NOVO PRONTUÁRIO (seleção de clínica + rabiscos) ===================== -->
-<section id="view-new" class="view">
+<!-- ===================== TELA: PACIENTES DE UMA CLÍNICA ===================== -->
+<section id="view-patients" class="view">
   <header class="topbar">
     <button class="icon-btn" data-nav="view-home">←</button>
-    <h1>Novo prontuário</h1>
+    <h1 id="patients-clinic-title">Pacientes</h1>
+    <button id="btn-import-pdfs" class="icon-btn" title="Importar PDFs">⬆️</button>
+  </header>
+  <div class="content">
+    <input id="patients-search" class="field-input" placeholder="Buscar paciente nesta clínica..." autocomplete="off">
+    <ul id="patients-list" class="list" style="margin-top:12px"></ul>
+    <p id="patients-empty" class="empty-hint">Nenhum paciente cadastrado ainda.</p>
+    <button id="btn-add-patient" class="btn-secondary">+ Novo paciente</button>
+  </div>
+</section>
+
+<!-- ===================== TELA: HISTÓRICO DO PACIENTE ===================== -->
+<section id="view-patient" class="view">
+  <header class="topbar">
+    <button class="icon-btn" data-nav="view-patients">←</button>
+    <h1 id="patient-title">Paciente</h1>
     <span style="width:40px"></span>
   </header>
   <div class="content">
-    <label class="field-label">Clínica</label>
-    <div id="new-clinic-name" class="field-readonly"></div>
+    <button id="btn-new-visit" class="btn-primary">+ Novo atendimento</button>
+    <div class="section-title" style="margin-top:20px">Histórico</div>
+    <ul id="visit-list" class="list"></ul>
+    <p id="visit-empty" class="empty-hint">Nenhum atendimento registrado ainda.</p>
+  </div>
+</section>
 
-    <label class="field-label" for="new-patient">Paciente (opcional, só pro nome do arquivo)</label>
-    <input id="new-patient" class="field-input" placeholder="Nome do paciente" autocomplete="off">
+<!-- ===================== TELA: ESCOLHER RABISCOS AO INICIAR ===================== -->
+<section id="view-new" class="view">
+  <header class="topbar">
+    <button class="icon-btn" data-nav="view-patient">←</button>
+    <h1>Novo atendimento</h1>
+    <span style="width:40px"></span>
+  </header>
+  <div class="content">
+    <label class="field-label">Paciente</label>
+    <div id="new-patient-name" class="field-readonly"></div>
 
     <label class="field-label" style="margin-top:20px">Rabiscos salvos para pré-carregar</label>
     <ul id="preset-picker-list" class="list"></ul>
@@ -53,10 +85,29 @@
   </div>
 </section>
 
+<!-- ===================== TELA: IMPORTAR PDFs ANTIGOS ===================== -->
+<section id="view-import" class="view">
+  <header class="topbar">
+    <button class="icon-btn" data-nav="view-patients">←</button>
+    <h1>Importar PDFs</h1>
+    <span style="width:40px"></span>
+  </header>
+  <div class="content">
+    <p class="empty-hint" style="margin-bottom:12px">
+      Selecione os PDFs exportados antigamente. Se o nome do arquivo seguir o padrão
+      <strong>AAMMDD nome</strong> (ex: 230212 maria ines silva), data e nome já vêm preenchidos —
+      confira antes de importar. Pacientes com o mesmo nome já cadastrados são reaproveitados.
+    </p>
+    <input type="file" id="import-file-input" accept="application/pdf" multiple>
+    <div id="import-rows" style="margin-top:16px"></div>
+    <button id="btn-do-import" class="btn-primary" style="margin-top:16px;display:none">Importar</button>
+  </div>
+</section>
+
 <!-- ===================== TELA: CANVAS (desenho) ===================== -->
 <section id="view-canvas" class="view">
   <header class="topbar">
-    <button class="icon-btn" data-nav="view-home" id="btn-canvas-back">←</button>
+    <button class="icon-btn" id="btn-canvas-back">←</button>
     <div id="canvas-title" class="canvas-title">Prontuário</div>
     <button id="btn-canvas-menu" class="icon-btn">⋮</button>
   </header>

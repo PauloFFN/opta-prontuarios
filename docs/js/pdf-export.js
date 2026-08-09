@@ -54,8 +54,10 @@ function sanitizeFilename(name) {
 
 // Tenta abrir o menu nativo de compartilhar (Salvar em Arquivos / iCloud Drive / Android).
 // Se o navegador não suportar, cai para o download tradicional.
-async function exportAndSharePDF(bytes, filename) {
-  const blob = new Blob([bytes], { type: 'application/pdf' });
+// `bytesOrBlob` aceita tanto o retorno de buildRecordPDF (Uint8Array) quanto um Blob já pronto
+// (usado para compartilhar de novo um PDF antigo, seja gerado pelo app ou importado).
+async function exportAndSharePDF(bytesOrBlob, filename) {
+  const blob = bytesOrBlob instanceof Blob ? bytesOrBlob : new Blob([bytesOrBlob], { type: 'application/pdf' });
   const file = new File([blob], filename, { type: 'application/pdf' });
 
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
