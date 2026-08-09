@@ -30,6 +30,7 @@ class PageDrawer {
     this._zoom = { scale: 1, tx: 0, ty: 0 };
     this._lastTapTime = 0;
     this._lastTapPos = null;
+    this._singleTouchStart = null; // candidato a "toque rápido" pra reconhecer duplo toque
     this._strokeRect = null; // bounding rect "congelado" durante um traço, evita reflow a cada ponto
 
     this._onDown = this._onDown.bind(this);
@@ -44,12 +45,24 @@ class PageDrawer {
     this._ro.observe(this.canvas);
   }
 
-  resize() {
+  // getBoundingClientRect() do canvas reflete o zoom (CSS transform) aplicado no .page-stage
+  // — ótimo pra converter toque/caneta em coordenadas normalizadas (_norm), mas ruim pra saber
+  // o tamanho "de verdade" do canvas na hora de desenhar: dividindo pela escala atual, chegamos
+  // no tamanho lógico estável (sem zoom), que é o que corresponde à resolução interna real do
+  // canvas (this.canvas.width/height). Sem isso, com zoom ativo, os traços eram calculados fora
+  // do lugar (às vezes até fora da área visível do canvas).
+  _logicalSize() {
     const rect = this.canvas.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
+    const s = (this._zoom && this._zoom.scale) || 1;
+    return { width: rect.width / s, height: rect.height / s, rect };
+  }
+
+  resize() {
+    const { width, height } = this._logicalSize();
+    if (width === 0 || height === 0) return;
     const dpr = window.devicePixelRatio || 1;
-    this.canvas.width = Math.round(rect.width * dpr);
-    this.canvas.height = Math.round(rect.height * dpr);
+    this.canvas.width = Math.round(width * dpr);
+    this.canvas.height = Math.round(height * dpr);
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.redraw();
   }
@@ -80,7 +93,20 @@ class PageDrawer {
 
   _resetZoom() {
     this._zoom = { scale: 1, tx: 0, ty: 0 };
+    this._panState = null;
+    this._dragState = null;
+    this._pinchState = null;
     this._applyZoomTransform();
+  }
+
+  // Reset de zoom acionável por um botão da barra de ferramentas — mais confiável que depender
+  // só do duplo toque, que pode falhar de reconhecer dependendo do timing do toque.
+  resetZoom() {
+    this._resetZoom();
+  }
+
+  isZoomed() {
+    return this._zoom.scale !== 1 || this._zoom.tx !== 0 || this._zoom.ty !== 0;
   }
 
   _beginPinch() {
@@ -128,19 +154,11 @@ class PageDrawer {
       this._capture(e.pointerId);
 
       if (this._touches.size === 0) {
-        const now = Date.now();
-        const isDoubleTap = this._lastTapPos
-          && (now - this._lastTapTime) < 300
-          && Math.hypot(e.clientX - this._lastTapPos.x, e.clientY - this._lastTapPos.y) < 30;
-        this._lastTapTime = now;
-        this._lastTapPos = { x: e.clientX, y: e.clientY };
-        if (isDoubleTap && this._zoom.scale !== 1) {
-          this._resetZoom();
-          this._panState = null;
-          this._dragState = null;
-          this._touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-          return;
-        }
+        // primeiro dedo de um gesto novo: limpa qualquer estado que possa ter ficado preso de
+        // um gesto anterior interrompido de forma inesperada (ex: um pointercancel perdido).
+        this._panState = null;
+        this._dragState = null;
+        this._pinchState = null;
       }
 
       this._touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -148,8 +166,10 @@ class PageDrawer {
       if (this._touches.size === 2) {
         this._panState = null;
         this._dragState = null;
+        this._singleTouchStart = null; // virou pinça, não conta mais como candidato a toque único
         this._beginPinch();
       } else if (this._touches.size === 1) {
+        this._singleTouchStart = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, time: Date.now() };
         this._resumeSingleTouch(e.pointerId, { x: e.clientX, y: e.clientY });
       }
       return;
@@ -207,12 +227,37 @@ class PageDrawer {
 
   _onUp(e) {
     if (e.pointerType === 'touch') {
+      // Detecta duplo toque só com base num toque que REALMENTE terminou rápido e sem se
+      // mover (não em qualquer toque que começou perto de outro) — evita reset de zoom por
+      // engano logo depois de uma pinça, que também "começa" perto do toque seguinte.
+      if (this._singleTouchStart && this._singleTouchStart.pointerId === e.pointerId) {
+        const dt = Date.now() - this._singleTouchStart.time;
+        const dd = Math.hypot(e.clientX - this._singleTouchStart.x, e.clientY - this._singleTouchStart.y);
+        if (dt < 250 && dd < 10) {
+          const now = Date.now();
+          const isDoubleTap = this._lastTapPos
+            && (now - this._lastTapTime) < 300
+            && Math.hypot(e.clientX - this._lastTapPos.x, e.clientY - this._lastTapPos.y) < 30;
+          if (isDoubleTap && this._zoom.scale !== 1) {
+            this._resetZoom();
+            this._lastTapPos = null;
+          } else {
+            this._lastTapTime = now;
+            this._lastTapPos = { x: e.clientX, y: e.clientY };
+          }
+        } else {
+          this._lastTapPos = null;
+        }
+        this._singleTouchStart = null;
+      }
+
       this._touches.delete(e.pointerId);
       if (this._touches.size < 2) this._pinchState = null;
       if (this._panState && e.pointerId === this._panState.pointerId) this._panState = null;
       if (this._dragState && e.pointerId === this._dragState.pointerId) this._dragState = null;
       if (this._touches.size === 1) {
         const [[pid, pos]] = this._touches;
+        this._singleTouchStart = null; // veio de uma pinça, não conta como toque único
         this._resumeSingleTouch(pid, pos);
       }
       return;
@@ -296,14 +341,14 @@ class PageDrawer {
   // mesmo com a ficha cheia de anotações — redesenhar tudo a cada movimento é o que travava.
   _drawIncrementalSegment(prevPt, pt) {
     if (!this._strokeRect) return;
-    const w = this._strokeRect.width, h = this._strokeRect.height;
+    const s = (this._zoom && this._zoom.scale) || 1;
+    const w = this._strokeRect.width / s, h = this._strokeRect.height / s;
     const mini = { tool: this.currentStroke.tool, color: this.currentStroke.color, width: this.currentStroke.width, points: [prevPt, pt] };
     PageDrawer._drawStroke(this.ctx, mini, w, h);
   }
 
   redraw() {
-    const rect = this.canvas.getBoundingClientRect();
-    const w = rect.width, h = rect.height;
+    const { width: w, height: h } = this._logicalSize();
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     for (const s of this.strokes) PageDrawer._drawStroke(this.ctx, s, w, h);
     if (this.currentStroke) PageDrawer._drawStroke(this.ctx, this.currentStroke, w, h);

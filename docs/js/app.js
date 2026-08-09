@@ -140,6 +140,10 @@
     (lastActiveDrawer || drawer1).redo();
     scheduleAutosave();
   });
+  document.getElementById('btn-reset-zoom').addEventListener('click', () => {
+    drawer1.resetZoom();
+    drawer2.resetZoom();
+  });
 
   document.getElementById('btn-canvas-menu').addEventListener('click', async () => {
     if (confirm('Descartar o que não foi salvo e voltar aos rabiscos padrão?')) {
