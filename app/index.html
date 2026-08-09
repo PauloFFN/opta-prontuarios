@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Prontuários</title>
+<meta name="theme-color" content="#1b2430">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ===================== TELA: HOME ===================== -->
+<section id="view-home" class="view active">
+  <header class="topbar">
+    <h1>Prontuários</h1>
+    <button id="btn-open-presets" class="icon-btn" title="Meus rabiscos">✏️</button>
+  </header>
+
+  <div class="content">
+    <div class="section-title">Clínicas</div>
+    <ul id="clinic-list" class="list"></ul>
+    <button id="btn-add-clinic" class="btn-secondary">+ Nova clínica</button>
+
+    <div class="section-title" style="margin-top:28px">Rascunhos em aberto</div>
+    <ul id="draft-list" class="list"></ul>
+    <p id="draft-empty" class="empty-hint">Nenhum rascunho salvo.</p>
+  </div>
+</section>
+
+<!-- ===================== TELA: NOVO PRONTUÁRIO (seleção de clínica + rabiscos) ===================== -->
+<section id="view-new" class="view">
+  <header class="topbar">
+    <button class="icon-btn" data-nav="view-home">←</button>
+    <h1>Novo prontuário</h1>
+    <span style="width:40px"></span>
+  </header>
+  <div class="content">
+    <label class="field-label">Clínica</label>
+    <div id="new-clinic-name" class="field-readonly"></div>
+
+    <label class="field-label" for="new-patient">Paciente (opcional, só pro nome do arquivo)</label>
+    <input id="new-patient" class="field-input" placeholder="Nome do paciente" autocomplete="off">
+
+    <label class="field-label" style="margin-top:20px">Rabiscos salvos para pré-carregar</label>
+    <ul id="preset-picker-list" class="list"></ul>
+    <p id="preset-picker-empty" class="empty-hint">Nenhum rabisco salvo ainda. Você pode criar em "Meus rabiscos".</p>
+
+    <button id="btn-start-record" class="btn-primary" style="margin-top:24px">Iniciar prontuário</button>
+  </div>
+</section>
+
+<!-- ===================== TELA: CANVAS (desenho) ===================== -->
+<section id="view-canvas" class="view">
+  <header class="topbar">
+    <button class="icon-btn" data-nav="view-home" id="btn-canvas-back">←</button>
+    <div id="canvas-title" class="canvas-title">Prontuário</div>
+    <button id="btn-canvas-menu" class="icon-btn">⋮</button>
+  </header>
+
+  <div class="toolbar" id="toolbar">
+    <button class="tool-btn active" data-tool="pen" title="Caneta">🖊️</button>
+    <button class="tool-btn" data-tool="eraser" title="Borracha">🧹</button>
+    <input type="color" id="pen-color" value="#1b1b1b" title="Cor">
+    <select id="pen-width" title="Espessura">
+      <option value="1.5">Fino</option>
+      <option value="3" selected>Médio</option>
+      <option value="6">Grosso</option>
+    </select>
+    <button id="btn-undo" class="tool-btn" title="Desfazer">↶</button>
+    <button id="btn-redo" class="tool-btn" title="Refazer">↷</button>
+    <button id="btn-insert-preset" class="tool-btn" title="Inserir rabisco">➕✏️</button>
+    <span class="spacer"></span>
+    <div id="page-indicator" class="page-indicator">1 / 2</div>
+  </div>
+
+  <div class="canvas-scroll" id="canvas-scroll">
+    <div class="page-stage" id="page-stage-1" data-page="1">
+      <img class="page-bg" src="assets/template/page-1.png" draggable="false">
+      <canvas class="draw-layer" id="draw-canvas-1"></canvas>
+    </div>
+    <div class="page-stage" id="page-stage-2" data-page="2">
+      <img class="page-bg" src="assets/template/page-2.png" draggable="false">
+      <canvas class="draw-layer" id="draw-canvas-2"></canvas>
+    </div>
+  </div>
+
+  <div class="bottom-actions">
+    <button id="btn-save-draft" class="btn-secondary">Salvar rascunho</button>
+    <button id="btn-export-pdf" class="btn-primary">Exportar PDF</button>
+  </div>
+</section>
+
+<!-- ===================== TELA: MEUS RABISCOS ===================== -->
+<section id="view-presets" class="view">
+  <header class="topbar">
+    <button class="icon-btn" data-nav="view-home">←</button>
+    <h1>Meus rabiscos</h1>
+    <button id="btn-new-preset" class="icon-btn" title="Novo">+</button>
+  </header>
+  <div class="content">
+    <p class="empty-hint" style="margin-bottom:16px">Desenhe algo que você repete sempre (ex: seta, campo visual, carimbo) e salve como rabisco. Você escolhe quais carregar em cada prontuário novo.</p>
+    <ul id="presets-manage-list" class="list"></ul>
+  </div>
+</section>
+
+<!-- ===================== TELA: EDITOR DE RABISCO ===================== -->
+<section id="view-preset-editor" class="view">
+  <header class="topbar">
+    <button class="icon-btn" data-nav="view-presets">←</button>
+    <input id="preset-name-input" class="canvas-title-input" placeholder="Nome do rabisco">
+    <button id="btn-save-preset" class="icon-btn" title="Salvar">✓</button>
+  </header>
+
+  <div class="toolbar">
+    <button class="tool-btn active" data-tool="pen" title="Caneta">🖊️</button>
+    <button class="tool-btn" data-tool="eraser" title="Borracha">🧹</button>
+    <input type="color" id="preset-pen-color" value="#c0392b" title="Cor">
+    <select id="preset-pen-width" title="Espessura">
+      <option value="1.5">Fino</option>
+      <option value="3" selected>Médio</option>
+      <option value="6">Grosso</option>
+    </select>
+    <button id="btn-preset-undo" class="tool-btn" title="Desfazer">↶</button>
+    <button id="btn-preset-redo" class="tool-btn" title="Refazer">↷</button>
+    <span class="spacer"></span>
+    <div id="preset-page-indicator" class="page-indicator">1 / 2</div>
+  </div>
+
+  <div class="canvas-scroll" id="preset-canvas-scroll">
+    <div class="page-stage" id="preset-page-stage-1" data-page="1">
+      <img class="page-bg" src="assets/template/page-1.png" draggable="false">
+      <canvas class="draw-layer" id="preset-draw-canvas-1"></canvas>
+    </div>
+    <div class="page-stage" id="preset-page-stage-2" data-page="2">
+      <img class="page-bg" src="assets/template/page-2.png" draggable="false">
+      <canvas class="draw-layer" id="preset-draw-canvas-2"></canvas>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== MODAL genérico ===================== -->
+<div id="modal-backdrop" class="modal-backdrop">
+  <div class="modal-box" id="modal-box"></div>
+</div>
+
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="js/db.js"></script>
+<script src="js/canvas-engine.js"></script>
+<script src="js/pdf-export.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
