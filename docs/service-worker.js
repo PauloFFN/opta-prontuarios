@@ -1,5 +1,5 @@
 // Cache simples "app shell" para funcionar offline (essencial: você anota sem internet).
-const CACHE_NAME = 'prontuarios-v2';
+const CACHE_NAME = 'prontuarios-v3';
 const ASSETS = [
   './',
   './index.html',

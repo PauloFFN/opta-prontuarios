@@ -16,7 +16,6 @@ button, input, select { font-family: inherit; }
   background: #1b2430; color: #fff;
   flex: 0 0 auto;
 }
-.topbar h1 { font-size: 17px; margin: 0; font-weight: 600; }
 .icon-btn {
   background: none; border: none; color: #fff; font-size: 20px;
   width: 40px; height: 40px; border-radius: 8px; cursor: pointer;
@@ -24,29 +23,6 @@ button, input, select { font-family: inherit; }
 .icon-btn:active { background: rgba(255,255,255,0.15); }
 
 .canvas-title { color: #fff; font-size: 15px; font-weight: 600; flex: 1; text-align: center; }
-.canvas-title-input {
-  flex: 1; background: rgba(255,255,255,0.12); border: none; border-radius: 6px;
-  color: #fff; padding: 8px 10px; font-size: 15px; margin: 0 8px;
-}
-.canvas-title-input::placeholder { color: rgba(255,255,255,0.6); }
-
-.content { padding: 16px; overflow-y: auto; flex: 1; }
-
-.section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7684; margin: 4px 0 8px; }
-
-.list { list-style: none; margin: 0; padding: 0; }
-.list-item {
-  display: flex; align-items: center; justify-content: space-between;
-  background: #fff; border-radius: 10px; padding: 14px 16px; margin-bottom: 8px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.06); cursor: pointer;
-}
-.list-item:active { background: #f4f6f9; }
-.list-item .item-title { font-size: 15px; font-weight: 600; }
-.list-item .item-sub { font-size: 12px; color: #6b7684; margin-top: 2px; }
-.list-item .item-actions { display: flex; gap: 8px; }
-.list-item .item-actions button { border: none; background: #f0f2f5; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
-
-.empty-hint { color: #8791a0; font-size: 13px; }
 
 .btn-primary, .btn-secondary {
   border: none; border-radius: 10px; padding: 13px 18px; font-size: 15px; font-weight: 600;
@@ -56,13 +32,6 @@ button, input, select { font-family: inherit; }
 .btn-primary:active { background: #2559b8; }
 .btn-secondary { background: #e3e7ee; color: #1b2430; }
 .btn-secondary:active { background: #d3d9e3; }
-
-.field-label { display: block; font-size: 12px; font-weight: 700; color: #6b7684; text-transform: uppercase; margin: 14px 0 6px; }
-.field-input, .field-readonly {
-  width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid #d6dbe3;
-  font-size: 15px; background: #fff;
-}
-.field-readonly { background: #f0f2f5; color: #1b2430; font-weight: 600; }
 
 /* Toolbar */
 .toolbar {
@@ -74,8 +43,8 @@ button, input, select { font-family: inherit; }
   width: 38px; height: 38px; font-size: 17px; flex: 0 0 auto; cursor: pointer;
 }
 .tool-btn.active { background: #2d6cdf; }
-#pen-color, #preset-pen-color { width: 34px; height: 34px; border: none; border-radius: 8px; padding: 0; background: none; flex: 0 0 auto; }
-#pen-width, #preset-pen-width { border-radius: 8px; border: none; padding: 6px; font-size: 13px; flex: 0 0 auto; }
+#pen-color { width: 34px; height: 34px; border: none; border-radius: 8px; padding: 0; background: none; flex: 0 0 auto; }
+#pen-width { border-radius: 8px; border: none; padding: 6px; font-size: 13px; flex: 0 0 auto; }
 .toolbar .spacer { flex: 1; }
 .page-indicator { color: #cdd4de; font-size: 13px; flex: 0 0 auto; white-space: nowrap; }
 
@@ -100,24 +69,3 @@ button, input, select { font-family: inherit; }
 .modal-box .modal-actions button { border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
 .modal-box .btn-cancel { background: #eef1f5; }
 .modal-box .btn-ok { background: #2d6cdf; color: #fff; font-weight: 600; }
-
-.preset-check { width: 20px; height: 20px; flex: 0 0 auto; }
-
-.status-badge {
-  display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
-  padding: 3px 8px; border-radius: 999px; margin-top: 4px;
-}
-.status-badge.draft { background: #fdf0d5; color: #a6690a; }
-.status-badge.done { background: #dcf3e4; color: #1a8a4a; }
-
-.import-row {
-  background: #fff; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
-}
-.import-row .import-filename { font-size: 12px; color: #6b7684; margin-bottom: 8px; word-break: break-all; }
-.import-row .import-fields { display: flex; gap: 8px; }
-.import-row .import-fields input[type=text] { flex: 1; min-width: 0; }
-.import-row .import-fields input[type=date] { flex: 0 0 auto; }
-.import-row input { padding: 9px 10px; border-radius: 8px; border: 1px solid #d6dbe3; font-size: 14px; }
-
-#global-search-results:empty { display: none; }

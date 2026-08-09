@@ -45,13 +45,6 @@ async function buildRecordPDF(drawersByPage) {
   return pdfDoc.save();
 }
 
-function sanitizeFilename(name) {
-  return (name || 'prontuario')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-zA-Z0-9-_ ]/g, '')
-    .trim().replace(/\s+/g, '_') || 'prontuario';
-}
-
 // Tenta abrir o menu nativo de compartilhar (Salvar em Arquivos / iCloud Drive / Android).
 // Se o navegador não suportar, cai para o download tradicional.
 // `bytesOrBlob` aceita tanto o retorno de buildRecordPDF (Uint8Array) quanto um Blob já pronto
