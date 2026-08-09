@@ -1,8 +1,14 @@
 // Monta o PDF final: imagem da planilha (fundo) + traços desenhados (camada transparente).
 const TEMPLATE_PAGES = [
-  { src: 'assets/template/page-1.png', w: 1836, h: 3024, ptW: 612, ptH: 1008 },
-  { src: 'assets/template/page-2.png', w: 1836, h: 3024, ptW: 612, ptH: 1008 }
+  { src: 'assets/template/page-1.png', ptW: 612, ptH: 1008 },
+  { src: 'assets/template/page-2.png', ptW: 612, ptH: 1008 }
 ];
+
+// A tinta é redesenhada do zero (é vetor por trás) na hora de exportar, então pode sair numa
+// resolução bem mais alta que a imagem de fundo sem pesar o app — isso evita o serrilhado ao
+// dar zoom no PDF. 4x o tamanho do ponto = ~288 DPI, mantendo as dimensões dentro do limite
+// de canvas de aparelhos mais antigos.
+const INK_RENDER_SCALE = 4;
 
 let _bgBytesCache = null;
 async function loadBackgroundBytes() {
@@ -35,7 +41,9 @@ async function buildRecordPDF(drawersByPage) {
 
     const drawer = drawersByPage[pageNum];
     if (drawer && !drawer.isEmpty()) {
-      const inkDataUrl = drawer.renderToImage(spec.w, spec.h);
+      const inkW = Math.round(spec.ptW * INK_RENDER_SCALE);
+      const inkH = Math.round(spec.ptH * INK_RENDER_SCALE);
+      const inkDataUrl = drawer.renderToImage(inkW, inkH);
       const inkBytes = dataUrlToBytes(inkDataUrl);
       const inkImage = await pdfDoc.embedPng(inkBytes);
       page.drawImage(inkImage, { x: 0, y: 0, width: spec.ptW, height: spec.ptH });
