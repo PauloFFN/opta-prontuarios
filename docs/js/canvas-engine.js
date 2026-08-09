@@ -15,7 +15,13 @@ class PageDrawer {
     this.width = 3;
     this.onChange = null;
 
-    this.canvas.style.touchAction = 'pan-y';
+    // touch-action: none tira do Safari qualquer chance de interpretar o toque como um gesto
+    // de rolar a página — sem isso, o reconhecedor de gestos nativo às vezes "rouba" o toque
+    // no meio de um traço (a caneta risca, para, e a tela desliza). Rolar com o dedo agora é
+    // feito manualmente abaixo, então continua funcionando, só que sem essa disputa.
+    this.canvas.style.touchAction = 'none';
+    this.scrollEl = this.canvas.closest('.canvas-scroll');
+    this._panState = null;
     this._onDown = this._onDown.bind(this);
     this._onMove = this._onMove.bind(this);
     this._onUp = this._onUp.bind(this);
@@ -46,15 +52,41 @@ class PageDrawer {
     };
   }
 
+  _capture(pointerId) {
+    // setPointerCapture pode falhar em alguns navegadores/situações; a captura é só uma
+    // garantia extra (mantém os eventos chegando aqui mesmo se o dedo/caneta sair da área do
+    // canvas), então uma falha aqui não deve impedir o resto do gesto de funcionar.
+    try { this.canvas.setPointerCapture(pointerId); } catch (err) { /* segue sem captura */ }
+  }
+
   _onDown(e) {
-    if (e.pointerType === 'touch') return; // dedo = rolar a tela, só caneta/mouse desenha
+    if (e.pointerType === 'touch') {
+      // dedo = rolar a tela; controlado à mão aqui (não pelo navegador) pra não disputar
+      // o gesto com o desenho da caneta.
+      if (this._panState) return; // já tem um dedo rolando, ignora um segundo toque
+      e.preventDefault();
+      this._panState = {
+        pointerId: e.pointerId,
+        startY: e.clientY,
+        startScrollTop: this.scrollEl ? this.scrollEl.scrollTop : 0
+      };
+      this._capture(e.pointerId);
+      return;
+    }
     e.preventDefault();
-    this.canvas.setPointerCapture(e.pointerId);
     this.redoStack = [];
     this.currentStroke = { tool: this.tool, color: this.color, width: Number(this.width), points: [this._norm(e)] };
+    this._capture(e.pointerId);
   }
 
   _onMove(e) {
+    if (this._panState && e.pointerId === this._panState.pointerId) {
+      if (this.scrollEl) {
+        const dy = e.clientY - this._panState.startY;
+        this.scrollEl.scrollTop = this._panState.startScrollTop - dy;
+      }
+      return;
+    }
     if (!this.currentStroke) return;
     if (e.pointerType === 'touch') return;
     e.preventDefault();
@@ -63,6 +95,10 @@ class PageDrawer {
   }
 
   _onUp(e) {
+    if (this._panState && e.pointerId === this._panState.pointerId) {
+      this._panState = null;
+      return;
+    }
     if (!this.currentStroke) return;
     if (this.currentStroke.points.length > 1) {
       this.strokes.push(this.currentStroke);
