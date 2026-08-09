@@ -16,10 +16,14 @@
   function closeModal() { modalBackdrop.classList.remove('active'); modalBox.innerHTML = ''; }
   modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) closeModal(); });
 
-  function promptModal(title, placeholder) {
+  function promptModal(title, placeholder, imageDataUrl) {
     return new Promise((resolve) => {
+      const imageHtml = imageDataUrl
+        ? `<img src="${imageDataUrl}" alt="Campo Nome" class="name-crop-preview">`
+        : '';
       modalBox.innerHTML = `
         <h3>${title}</h3>
+        ${imageHtml}
         <input type="text" id="modal-input" placeholder="${placeholder || ''}">
         <div class="modal-actions">
           <button class="btn-cancel" id="modal-cancel">Cancelar</button>
@@ -32,6 +36,47 @@
       document.getElementById('modal-ok').onclick = () => { const v = input.value.trim(); closeModal(); resolve(v || ''); };
       input.onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('modal-ok').click(); };
     });
+  }
+
+  // ---------- Recorte ampliado do campo "Nome:" (referência visual, sem OCR) ----------
+  // Região normalizada (0..1) do campo Nome na página 1, medida diretamente no template.
+  const NAME_FIELD_BOX = { x0: 0.005, y0: 0.083, x1: 0.62, y1: 0.115 };
+
+  let _nameFieldBgImg = null;
+  function loadNameFieldBgImage() {
+    if (_nameFieldBgImg) return Promise.resolve(_nameFieldBgImg);
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => { _nameFieldBgImg = img; resolve(img); };
+      img.src = 'assets/template/page-1.png';
+    });
+  }
+
+  async function renderNameFieldCrop() {
+    const img = await loadNameFieldBgImage();
+    const box = NAME_FIELD_BOX;
+    const sx = box.x0 * img.width, sy = box.y0 * img.height;
+    const sw = (box.x1 - box.x0) * img.width, sh = (box.y1 - box.y0) * img.height;
+    const destW = 640;
+    const destH = Math.round(destW * sh / sw);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = destW;
+    canvas.height = destH;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, destW, destH);
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, destW, destH);
+
+    // Traços da página 1 (onde fica o campo Nome), remapeados para a mesma região ampliada.
+    const w = destW / (box.x1 - box.x0);
+    const h = destH / (box.y1 - box.y0);
+    ctx.save();
+    ctx.translate(-box.x0 * w, -box.y0 * h);
+    (drawer1 ? drawer1.getStrokes() : []).forEach(s => PageDrawer._drawStroke(ctx, s, w, h));
+    ctx.restore();
+
+    return canvas.toDataURL('image/png');
   }
 
   // ---------- Estado ----------
@@ -141,7 +186,8 @@
   }
 
   document.getElementById('btn-export-pdf').addEventListener('click', async () => {
-    const patientName = await promptModal('Nome do paciente', 'Usado só no nome do arquivo');
+    const cropUrl = await renderNameFieldCrop();
+    const patientName = await promptModal('Nome do paciente', 'Confira / corrija o nome', cropUrl);
     if (patientName === null) return;
 
     clearTimeout(saveTimer);

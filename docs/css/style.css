@@ -69,3 +69,8 @@ button, input, select { font-family: inherit; }
 .modal-box .modal-actions button { border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
 .modal-box .btn-cancel { background: #eef1f5; }
 .modal-box .btn-ok { background: #2d6cdf; color: #fff; font-weight: 600; }
+
+.name-crop-preview {
+  display: block; width: 100%; border: 1px solid #d6dbe3; border-radius: 8px;
+  margin-bottom: 12px; background: #fff;
+}
