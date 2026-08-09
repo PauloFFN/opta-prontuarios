@@ -50,7 +50,7 @@ button, input, select { font-family: inherit; }
 
 /* Canvas area */
 .canvas-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; background: #4a5568; touch-action: pan-y; }
-.page-stage { position: relative; width: 100%; max-width: 900px; margin: 16px auto; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+.page-stage { position: relative; width: 100%; max-width: 900px; margin: 16px auto; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.3); transform-origin: 0 0; will-change: transform; }
 .page-bg { width: 100%; display: block; pointer-events: none; user-select: none; }
 .draw-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; touch-action: none; }
 
