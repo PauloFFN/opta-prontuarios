@@ -61,9 +61,13 @@ class PageDrawer {
     const { width, height } = this._logicalSize();
     if (width === 0 || height === 0) return;
     const dpr = window.devicePixelRatio || 1;
-    this.canvas.width = Math.round(width * dpr);
-    this.canvas.height = Math.round(height * dpr);
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // A tela física tem sempre a mesma quantidade de pixels num dado ponto, com ou sem zoom —
+    // então quanto mais zoom, mais "pixels de bitmap" o canvas precisa ter por pixel lógico pra
+    // continuar nítido. Sem isso, dar zoom só amplia os mesmos pixels de sempre (serrilhado).
+    const density = dpr * ((this._zoom && this._zoom.scale) || 1);
+    this.canvas.width = Math.round(width * density);
+    this.canvas.height = Math.round(height * density);
+    this.ctx.setTransform(density, 0, 0, density, 0, 0);
     this.redraw();
   }
 
@@ -97,6 +101,7 @@ class PageDrawer {
     this._dragState = null;
     this._pinchState = null;
     this._applyZoomTransform();
+    this.resize(); // volta a resolução do canvas ao normal (economiza memória)
   }
 
   // Reset de zoom acionável por um botão da barra de ferramentas — mais confiável que depender
@@ -138,9 +143,12 @@ class PageDrawer {
     this._applyZoomTransform();
   }
 
-  // depois que solta um dos dois dedos da pinça, retoma pan/rolagem normal com o dedo que sobrou
+  // depois que solta um dos dois dedos da pinça, retoma pan/rolagem normal com o dedo que sobrou.
+  // Usa isZoomed() (não só "scale > 1") porque dá pra terminar uma pinça com scale=1 mas ainda
+  // com um deslocamento (tx/ty) sobrando — nesse caso o dedo precisa continuar arrastando a
+  // página livremente (não só rolando na vertical) até voltar pro centro.
   _resumeSingleTouch(pointerId, pos) {
-    if (this._zoom.scale > 1) {
+    if (this.isZoomed()) {
       this._dragState = { pointerId, startX: pos.x, startY: pos.y, startTx: this._zoom.tx, startTy: this._zoom.ty };
     } else {
       this._panState = { pointerId, startY: pos.y, startScrollTop: this.scrollEl ? this.scrollEl.scrollTop : 0 };
@@ -252,6 +260,7 @@ class PageDrawer {
       }
 
       this._touches.delete(e.pointerId);
+      const wasPinching = !!this._pinchState;
       if (this._touches.size < 2) this._pinchState = null;
       if (this._panState && e.pointerId === this._panState.pointerId) this._panState = null;
       if (this._dragState && e.pointerId === this._dragState.pointerId) this._dragState = null;
@@ -260,6 +269,11 @@ class PageDrawer {
         this._singleTouchStart = null; // veio de uma pinça, não conta como toque único
         this._resumeSingleTouch(pid, pos);
       }
+      // A pinça só ajusta o zoom visual (CSS transform) enquanto os dedos se movem, pra não
+      // pesar redesenhando tudo a cada frame. Quando os dedos soltam e o nível de zoom se
+      // estabiliza, aí sim vale a pena recriar o canvas numa resolução mais alta pra ficar
+      // nítido (em vez de esticar os mesmos pixels de sempre).
+      if (wasPinching) this.resize();
       return;
     }
 
